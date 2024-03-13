@@ -50,3 +50,7 @@ Redis 源码对于listpack的解释为“A list of strings serialization format�
 <img src="./pic/listpack_encode.png" />
 
 listpack.h/listpack.c中相关的代码基本都是对一个`unsigned char *`类型的变量进行操作，利用位运算进行bit尺度的赋值，根据listpack设计规则提供相关接口，如插入，删除，判断，统计等。
+
+
+## replication 主从复制
+基于状态机模型的主从复制

@@ -7,8 +7,8 @@
 #include<mutex>
 #include<fstream>
 
-std::mutex mtx;  //代表互斥锁 ，保持线程同步
-std::string delimiter=":";  //存放到STORE_FILE中时，将delimiter也存入进文件中，用于get_key_value_from_string的key与value区分
+
+const std::string delimiter=":";  //存放到STORE_FILE中时，将delimiter也存入进文件中，用于get_key_value_from_string的key与value区分
 
 template<typename K,typename V>
 class Node{
@@ -70,6 +70,8 @@ public:
     void delete_element(K);
     void dump_file(const std::string &);
     void load_file(const std::string &);
+    void clear();
+    SkipList<K,V>& operator=(SkipList<K,V> sl);
     int size();
 private:
     void get_key_value_from_string(const std::string &str,std::string*key,std::string *value);
@@ -81,6 +83,7 @@ private:
     std::ofstream _file_writer;  //默认以输入(writer)方式打开文件。
     std::ifstream _file_reader;  //默认以输出(reader)方式打开文件。
     int _element_count;          //表示跳表中元素的数量
+    std::mutex mtx;  //代表互斥锁 ，保持线程同步
 };
 
 //create_node函数：根据给定的键、值和层级创建一个新节点，并返回该节点的指针
@@ -193,23 +196,17 @@ void SkipList<K,V>::load_file(const std::string &fileName)
     {
         std::cout<<"load_file----------"<<std::endl;
         std::string line;
-        std::string *key=new std::string();
-        std::string *value=new std::string();
+        std::string key;
+        std::string value;
         while(getline(_file_reader,line))
         {
-            get_key_value_from_string(line,key,value);
-            if(key->empty()||value->empty())
+            get_key_value_from_string(line,&key,&value);
+            if(key.empty()||value.empty())
             {
                 continue;
             }
-            int target=0;
-            std::string str_key=*key;   //当时定义的key为int类型，所以将得到的string类型的 key转成int
-            for(int i=0;i<str_key.size();i++)
-            {
-                target=target*10+str_key[i]-'0';
-            }
-            int Yes_No=insert_element(target,*value);
-            std::cout<<"key:"<<*key<<"value:"<<*value<<std::endl;
+            int Yes_No=insert_element(key,value);
+            std::cout<<"key:"<<key<<"value:"<<value<<std::endl;
         }
         _file_reader.close();
     }
@@ -324,6 +321,7 @@ SkipList<K,V>::SkipList(int max_level)
 template<typename K,typename V>
 SkipList<K,V>::~SkipList()
 {
+    clear();
     if(_file_writer.is_open())
     {
         _file_writer.close();
@@ -345,6 +343,24 @@ int SkipList<K,V>::get_random_level()
     }
     k=(k<_max_level)?k:_max_level; // 随机层数不能大于最大值
     return k;
-};
+}
+
+template<typename K, typename V>
+void SkipList<K,V>::clear()
+{
+    Node<K,V> *node = _header->forward[0];
+    while(node != nullptr)
+    {
+        auto next = node->forward[0];
+        delete node;
+        node = next;
+        --this->_element_count;
+    }
+    for(int i=0;i<this->_max_level;++i)
+    {
+        _header->forward[i]=nullptr;
+    }
+    this->_skip_list_level = 0;
+}
 
 #endif // REDIS_LEARN_SKIPLIST
