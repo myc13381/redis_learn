@@ -63,7 +63,7 @@ public:
     SkipList(int);
     ~SkipList();
     int get_random_level();
-    Node<K,V>*create_node(K,V,int);
+    Node<K,V>* create_node(K,V,int);
     int insert_element(K,V);
     void display_list();
     bool search_element(K);
@@ -71,7 +71,8 @@ public:
     void dump_file(const std::string &);
     void load_file(const std::string &);
     void clear();
-    SkipList<K,V>& operator=(SkipList<K,V> sl);
+    const Node<K,V>* getHeader() { return _header; }
+    SkipList<K,V>& operator=(SkipList<K,V> sl) = delete;
     int size();
 private:
     void get_key_value_from_string(const std::string &str,std::string*key,std::string *value);
@@ -95,7 +96,7 @@ Node<K,V> *SkipList<K,V>::create_node(const K k, const V v, int level)
 }
 
 //insert_element 函数：插入一个新的键值对到跳表中。通过遍历跳表，找到插入位置，并根据随机层级创建节点。
-//如果键已存在，则返回 1，表示插入失败；否则，插入成功，返回 0。
+//如果键已存在，则返回 1，表示修改插入的值；否则，插入新的键值对，返回 0。
 template<typename K,typename V>
 int SkipList<K,V>::insert_element(const K key,const V value)
 {
@@ -115,7 +116,9 @@ int SkipList<K,V>::insert_element(const K key,const V value)
     current=current->forward[0];
     if(current!=NULL && current->get_key()==key)
     {
-        std::cout<<"key:"<<key<<",exists"<<std::endl;
+        // 键已存在，修改值
+        //std::cout<<"key:"<<key<<",exists"<<std::endl;
+        current->set_value(value);
         mtx.unlock();
         return 1;
     }

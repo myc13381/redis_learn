@@ -54,3 +54,21 @@ listpack.h/listpack.c中相关的代码基本都是对一个`unsigned char *`类
 
 ## replication 主从复制
 基于状态机模型的主从复制
+
+```cpp
+enum ReplStatus {
+    REPL_STATE_NONE = 0, // 初始状态
+    REPL_STATE_CONNECT, // 初始化完成状态
+    REPL_STATE_CONNECTING, // master 请求连接 slave
+    REPL_STATE_CHECK, // 发送心跳包
+    REPL_STATE_FULLREPL, // 全量复制
+    REPL_STATE_INCRREPL, // 增量复制
+    REPL_STATE_ACK, // 回应
+    REPL_STATE_NULL // 无效状态
+};
+```
+使用TCP进行主从连接，通过交换不同的状态来确定此时应该执行的操作
+使用了socket编程，文件IO等
+
+## AOF
+参考文章 https://zhuanlan.zhihu.com/p/467217082

@@ -1,5 +1,5 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 3.5)
 PROJECT(Redis_Learn)
-SET(SRC_LIST "main.cpp" "replication.cpp")
+SET(SRC_LIST "main.cpp" "replication.cpp" "common.cpp")
 INCLUDE_DIRECTORIES(${PROJECT_SOURCE_DIR})
 ADD_EXECUTABLE(test ${SRC_LIST})

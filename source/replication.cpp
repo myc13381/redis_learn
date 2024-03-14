@@ -110,11 +110,32 @@ void syncWithSlave(DataBase &db)
     }
     else if(db.config.conn.offset - slaveConn.offset <= INCR_LEN)
     { // 增量复制
-        
+        // 首先告知从机将会发送多少个命令
+        size_t len = db.config.conn.offset - slaveConn.offset;
+        write(db.config.slave_socket_fd, reinterpret_cast<void*>(&len), sizeof(len));
+        constexpr int BUFFSIZE = 1024;
+        char buff[BUFFSIZE];
+        size_t startIndex = ((db.cmdbuff.getEnd() + db.cmdbuff.capacity()) - len) % db.cmdbuff.capacity();
+        for(size_t i=0;i<len;++i)
+        {
+            memset(buff,0,BUFFSIZE); // 初始化 buff
+            Command &temp = db.cmdbuff.at((startIndex + i) % db.cmdbuff.capacity());
+            *(CMD_FLAG*)buff = temp.cmdFlag;
+            size_t keyLen = temp.key.length();
+            *(size_t *)(buff + sizeof(CMD_FLAG)) = keyLen;
+            memcpy(buff +  sizeof(CMD_FLAG) + sizeof(size_t), temp.key.c_str(), keyLen + 1); // 加1包括 '\0'
+            size_t valueLen = temp.value.length();
+            *(size_t *)(buff + sizeof(CMD_FLAG) + sizeof(size_t) + keyLen + 1) =  valueLen; 
+            memcpy(buff  + sizeof(CMD_FLAG) + 2 * sizeof(size_t) + keyLen + 1, temp.value.c_str(), valueLen + 1);
+            // 发送 命令
+            write(db.config.slave_socket_fd,reinterpret_cast<void*>(buff),(2 * sizeof(size_t) + keyLen + valueLen + 2));
+        }
     }
     else 
     { // 全量复制
-
+        // 生成最新 文件
+        db.db.dump_file(db.config.dumpDir);
+        sendFile(db.config,db.config.dumpDir);
     }
     
 }
@@ -128,7 +149,9 @@ void sendFile(ServerConfig &config, std::string fileName)
     char buff[BUFFSIZE];
     std::vector<char> file_data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     size_t fileLen= file_data.size();
-    write(config.slave_socket_fd,reinterpret_cast<void *>(&(fileLen)),sizeof(size_t)); // 发送文件长度
+    // 发送文件长度
+    write(config.slave_socket_fd,reinterpret_cast<void *>(&(fileLen)),sizeof(size_t)); 
+    // 发送文件内容
     for(int i=0;i<file_data.size();i+=BUFFSIZE) // 发送文件
     {
         size_t byte_send = std::min(BUFFSIZE, file_data.size()-i);
@@ -248,7 +271,26 @@ void syncWithMaster(DataBase &db)
                 sendToMaster(db.config);
                 // 接收增量信息
                 // 接收增加的命令的数目
-                
+                size_t len;
+                read(db.config.master_socket_fd,reinterpret_cast<void*>(&len), sizeof(size_t));
+                db.config.conn.offset += len;
+                // 开始读取命令
+                Command cmd;
+                constexpr int BUFFSIZE = 1024;
+                char buff[BUFFSIZE];
+                for(size_t i=0;i<len;++i)
+                {
+                    memset(buff,0,BUFFSIZE);
+                    read(db.config.master_socket_fd,reinterpret_cast<void*>(buff),BUFFSIZE);
+                    cmd.cmdFlag = *(CMD_FLAG*)buff;
+                    size_t keyLen = *(size_t*)(buff + sizeof(CMD_FLAG));
+                    cmd.key = buff+sizeof(CMD_FLAG) + sizeof(size_t);
+                    size_t valueLen = *(size_t*)(buff + sizeof(CMD_FLAG) + sizeof(size_t) + keyLen + 1);
+                    cmd.value = buff + sizeof(CMD_FLAG) + 2 * sizeof(size_t) + 1;
+                    
+                    // 直接执行命令
+                    execCommand(db, cmd);
+                }
                 break;
             }
             case REPL_STATE_NULL:
