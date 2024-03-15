@@ -31,7 +31,7 @@ void sendToSlave(ServerConfig &config); // 向 slave 发送包
 
 void syncWithSlave(DataBase &db); // 和从机同步
 
-void sendFile(ServerConfig &config, std::string fileName, size_t offset); // 发送文件
+void sendFile(ServerConfig &config, std::string fileName); // 发送文件
 
 
 //======================slave=============================
@@ -46,7 +46,5 @@ void sendToMaster(ServerConfig &config); // 向 master 发送包
 void syncWithMaster(DataBase &db); // 和主机同步
 
 void recvFile(ServerConfig &config, std::string fileName); // 接收文件
-
-size_t parseBinaryCmd(const char *buff, Command &cmd); // 解析一个cmd，并返回，假设一定能解析成功
 
 #endif // REDIS_LEARN_REPLICATION

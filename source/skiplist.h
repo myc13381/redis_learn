@@ -60,7 +60,9 @@ void Node<K,V>::set_value(V value)
 template<typename K,typename V>
 class SkipList{
 public:
+    SkipList();
     SkipList(int);
+    SkipList(const SkipList<K,V> &sl);
     ~SkipList();
     int get_random_level();
     Node<K,V>* create_node(K,V,int);
@@ -71,9 +73,10 @@ public:
     void dump_file(const std::string &);
     void load_file(const std::string &);
     void clear();
-    const Node<K,V>* getHeader() { return _header; }
-    SkipList<K,V>& operator=(SkipList<K,V> sl) = delete;
-    int size();
+    Node<K,V>* getHeader() const { return _header; }
+    int getMaxLevel() const { return _max_level; }
+    int size() const { return _element_count; };
+    SkipList<K,V>& operator=(const SkipList<K,V> &sl);
 private:
     void get_key_value_from_string(const std::string &str,std::string*key,std::string *value);
     bool is_valid_string(const std::string &str);
@@ -86,6 +89,60 @@ private:
     int _element_count;          //表示跳表中元素的数量
     std::mutex mtx;  //代表互斥锁 ，保持线程同步
 };
+
+template <typename K,typename V>
+SkipList<K,V>::SkipList()
+{
+    this->_max_level=6;
+    this->_skip_list_level=0;
+    this->_element_count=0;
+    K k;
+    V v;
+    this->_header=new Node<K,V>(k,v,_max_level);
+}
+
+template<typename K,typename V>
+SkipList<K,V>::SkipList(int max_level)
+{
+    this->_max_level=max_level;
+    this->_skip_list_level=0;
+    this->_element_count=0;
+    K k;
+    V v;
+    this->_header=new Node<K,V>(k,v,_max_level);
+};
+
+template <typename K, typename V>
+SkipList<K,V>::SkipList(const SkipList<K,V> &sl)
+{   // 复制构造函数
+    this->_max_level=sl.getMaxLevel();
+    this->_skip_list_level=0;
+    this->_element_count=0;
+    K k;
+    V v;
+    this->_header=new Node<K,V>(k,v,_max_level);
+    Node<K,V> *node = sl.getHeader()->forward[0];
+    while(node != nullptr)
+    {
+        this->insert_element(node->key,node->value);
+        node = node->forward[0];
+    }
+}
+
+template <typename K, typename V>
+SkipList<K,V>& SkipList<K,V>::operator=(const SkipList<K,V> &sl)
+{
+    this->clear();
+    this->_max_level = sl.getMaxLevel();
+    Node<K,V> *node = sl.getHeader();
+    node = node->forward[0];
+    while(node != nullptr)
+    {
+        this->insert_element(node->get_key(),node->get_value());
+        node = node->forward[0];
+    }
+    return *this;
+}
 
 //create_node函数：根据给定的键、值和层级创建一个新节点，并返回该节点的指针
 template<typename K,typename V>
@@ -217,12 +274,6 @@ void SkipList<K,V>::load_file(const std::string &fileName)
     return;
 }
 
-//表示跳表中元素的数量
-template<typename K,typename V>
-int SkipList<K,V>::size() {
-    return _element_count;
-}
-
 //从STORE_FILE文件读取时，每一行将key和value用 ：分开，此函数将每行的key和value分割存入跳表中
 template<typename K,typename V>
 void SkipList<K,V>::get_key_value_from_string(const std::string &str, std::string *key, std::string *value)
@@ -309,17 +360,7 @@ bool SkipList<K,V>::search_element(K key)
     std::cout<<"Not Found Key:"<<key<<std::endl;
     return false;
 }
-template<typename K,typename V>
 
-SkipList<K,V>::SkipList(int max_level)
-{
-    this->_max_level=max_level;
-    this->_skip_list_level=0;
-    this->_element_count=0;
-    K k;
-    V v;
-    this->_header=new Node<K,V>(k,v,_max_level);
-};
 //释放内存，关闭_file_writer  _file_reader
 template<typename K,typename V>
 SkipList<K,V>::~SkipList()

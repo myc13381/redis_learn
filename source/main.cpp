@@ -3,10 +3,12 @@
 #include <iostream>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <thread>
 #include "skiplist.h"
 #include "hyperLogLog.h"
 #include "common.h"
 #include "replication.h"
+#include "aof.h"
 
 #ifdef _WIN32
     #define STORE_FILE "../dumpfile"
@@ -71,9 +73,10 @@ void masterTest()
     sc.master_port = 8001;
     sc.conn.offset=7777;
     connectToSlave(sc);
-    //shakeHandWithSlave(sc);
-    sendFile(sc,"/home/myc/Desktop/master.txt");
+    shakeHandWithSlave(sc);
+    //sendFile(sc,"/home/myc/Desktop/master.txt");
     disconnectToSlave(sc);
+
 }
 
 void slaveTest()
@@ -85,9 +88,10 @@ void slaveTest()
     sc.master_port = 8001;
     sc.conn.offset=6666;
     connectToMaster(sc);
-    //shakeHandWithMaster(sc);
-    recvFile(sc, "/home/myc/Desktop/slave.txt");
+    shakeHandWithMaster(sc);
+    //recvFile(sc, "/home/myc/Desktop/slave.txt");
     disconnectoMaster(sc);
+
 }
 
 int main()
@@ -105,7 +109,10 @@ int main()
     //     slaveTest();
     //     int status;
     //     wait(&status);
+        
     // }
-    SkipTest();
-    return 0;
+    // return 0;
+    DataBase db;
+    AOFRW(db);
+    for(int i=0;i<10000;++i);
 }

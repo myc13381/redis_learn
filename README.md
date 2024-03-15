@@ -69,6 +69,9 @@ enum ReplStatus {
 ```
 使用TCP进行主从连接，通过交换不同的状态来确定此时应该执行的操作
 使用了socket编程，文件IO等
+主从复制缓冲区
 
 ## AOF
 参考文章 https://zhuanlan.zhihu.com/p/467217082
+
+解决问题，多线程进行AOF重写 ，如何使用多线程

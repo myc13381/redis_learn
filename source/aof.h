@@ -23,7 +23,13 @@
  *    4e) Delete the history files use bio                                              删除历史文件
  */
 
+// AOF 文件的格式是：
+// CMD_FLAG\tKey\tValue\n
+
+#include <thread>
+#include <cstdio>
 #include "common.h"
+#include "skiplist.h"
 
 
 
@@ -31,7 +37,7 @@
 void writeInrcAofFile(CmdBuff &aof_buff, std::ofstream &ofs);
 
 // 重写 BASE_AOF 文件 重写到 targetFile 文件中，做法是遍历数据库，然后依次写入文件
-void reWriteBaseAofFile(DataBase &db, std::string targetFile);
+void reWriteBaseAofFile(DataBase db, std::string targetFile);
 
 // 重写 AOF 的整个流程
 void AOFRW(DataBase &db);
