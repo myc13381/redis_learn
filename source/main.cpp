@@ -6,9 +6,7 @@
 #include <thread>
 #include "skiplist.h"
 #include "hyperLogLog.h"
-#include "common.h"
-#include "replication.h"
-#include "aof.h"
+#include "server.h"
 
 #ifdef _WIN32
     #define STORE_FILE "../dumpfile"
@@ -66,53 +64,40 @@ void HyperLogLogTest()
 
 void masterTest()
 {
-    ServerConfig sc;
-    sc.isSlave = false;
-    sc.slave_IP = sc.mastr_IP = "127.0.0.1";
-    sc.slave_port = 9000;
-    sc.master_port = 8001;
-    sc.conn.offset=7777;
-    connectToSlave(sc);
-    shakeHandWithSlave(sc);
-    //sendFile(sc,"/home/myc/Desktop/master.txt");
-    disconnectToSlave(sc);
+    Server server;
+    server.config.isSlave = false;
+    server.config.slave_IP = server.config.master_IP = "127.0.0.1";
+    server.config.slave_port = 9000;
+    server.config.master_port = 8001;
+    server.config.conn.offset=7777;
+    connectToSlave(server.config);
+    //shakeHandWithSlave(server.config);
+    syncWithSlave(server);
+
 
 }
 
 void slaveTest()
 {
+    Server server;
     ServerConfig sc;
     sc.isSlave = false;
-    sc.slave_IP = sc.mastr_IP = "127.0.0.1";
+    sc.slave_IP = sc.master_IP = "127.0.0.1";
     sc.slave_port = 9000;
     sc.master_port = 8001;
     sc.conn.offset=6666;
+    server.config = sc;
     connectToMaster(sc);
-    shakeHandWithMaster(sc);
-    //recvFile(sc, "/home/myc/Desktop/slave.txt");
+    //shakeHandWithMaster(sc);
+    syncWithMaster(server);
     disconnectoMaster(sc);
 
 }
 
 int main()
 {
-    // __pid_t pid = fork();
-    // if(pid == 0)
-    // {
-    //     // child
-    //     masterTest();
-    // }
-    // else 
-    // {
-    //     // parent;
 
-    //     slaveTest();
-    //     int status;
-    //     wait(&status);
-        
-    // }
-    // return 0;
-    DataBase db;
-    AOFRW(db);
-    for(int i=0;i<10000;++i);
+    masterTest();
+
+    return 0;
 }

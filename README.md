@@ -75,3 +75,9 @@ enum ReplStatus {
 参考文章 https://zhuanlan.zhihu.com/p/467217082
 
 解决问题，多线程进行AOF重写 ，如何使用多线程
+
+## ae
+事件驱动
+时间事件
+IO事件
+设计架构 server 不需要知道AE的存在
