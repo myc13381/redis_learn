@@ -97,7 +97,7 @@ void sendToSlave(ServerConfig &config)
 // 和从机同步
 void syncWithSlave(Server &server)
 {
-    server.config.conn.status = REPL_STATE_CONNECT;
+    server.config.conn.status = REPL_STATE_CHECK;
     sendToSlave(server.config);
     ReplConnectionPack slaveConn;
     int readLen = read(server.config.slave_socket_fd,reinterpret_cast<void*>(&slaveConn),sizeof(slaveConn));
@@ -113,7 +113,8 @@ void syncWithSlave(Server &server)
         { // 全量同步
             server.config.conn.status = REPL_STATE_FULLREPL;
             sendToSlave(server.config);
-            sendFile(server.config, server.config.dumpDir, 0); // 内部更新offset
+            std::thread fullReplThread(sendFile,std::ref(server.config),server.config.dumpDir,0);
+            fullReplThread.detach();
         }
         else
         { // 增量同步 我们假设每次发送都是若干个完整的指令
@@ -146,10 +147,6 @@ void sendFile(ServerConfig &config, std::string fileName, size_t offset = 0)
         memcpy(buff, file_data.data() + i + offset, byte_send);
         write(config.slave_socket_fd, reinterpret_cast<void *>(buff), byte_send);
     }
-    if (offset == 0)
-        config.conn.offset = fileLen; // 发送了全量包
-    else
-        config.conn.offset += fileLen; // 发送增量包 已弃用
     file.close();
 }
 
@@ -240,9 +237,9 @@ void syncWithMaster(Server &db)
             {
                 debugMessage("full replicatio");
                 // 接收文件
-                db.config.conn.offset = 0; // 全量更新，偏移值变为0
+                db.config.conn.offset = retpack.offset; // 全量更新，偏移值变为主机的偏移值
                 // 接收全量文件
-                recvFile(db.config, db.config.dumpDir); // 内部更新offset
+                recvFile(db.config, db.config.dumpDir);
                 // 更新数据库
                 db.db.clear();
                 db.db.load_file(db.config.dumpDir);
@@ -301,7 +298,6 @@ void recvFile(ServerConfig &config, std::string fileName)
     char *buff = new char[fileLen + 1];
     read(config.master_socket_fd, static_cast<void *>(buff), fileLen);
     file.write(buff, fileLen);
-    config.conn.offset = fileLen;
 }
 
 // 解析一个cmd，并返回，假设一定能解析成功

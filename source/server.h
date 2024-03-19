@@ -12,6 +12,7 @@
 #include <sys/socket.h>
 #include <string.h>
 #include <unistd.h>
+#include <atomic>
 #include "skiplist.h"
 
 typedef SkipList<std::string,std::string> DB; // 数据库类型
@@ -43,6 +44,11 @@ struct ReplConnectionPack
     size_t offset; // 主机发送文件的字节数或者是从机接收的文件字节数
     ReplStatus status;
     ReplConnectionPack():offset(0),status(REPL_STATE_NONE) {}
+    ReplConnectionPack (const ReplConnectionPack &repl)
+    {
+        this->offset = repl.offset;
+        this->status = repl.status;
+    }
 };
 
 // 服务器 配置信息
