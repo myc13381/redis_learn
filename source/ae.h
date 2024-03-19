@@ -5,8 +5,10 @@
 #include <list>
 #include <chrono>
 #include <functional>
-
+#include <sys/epoll.h>
+#include <errno.h>
 #include "server.h"
+
 
 #define AE_NONE 0       /* No events registered. */
 #define AE_READABLE 1   /* Fire when descriptor is readable. */
@@ -18,6 +20,30 @@
     things to disk before sending replies, and want
     to do that in a group fashion. 
 */
+
+// forward declare
+class aeFileEvent;
+class aeFiredEvent;
+class aeTimeEvent;
+class aeEventLoop;
+class aeApiState;
+
+
+class aeApiState
+{
+public:
+    int epfd;
+    epoll_event *events;
+    aeApiState() {}
+};
+
+// 封装 epoll
+int aeApiCreate(aeEventLoop &eventloop);
+void aeApiFree(aeEventLoop &eventloop);
+int adApiAddEvent(aeEventLoop &eventloop, int fd, int mask);
+void aeApiDelEvent(aeEventLoop &eventloop, int fd, int delmask);
+int aeApiPoll(aeEventLoop &eventloop, int waitTime);
+std::string aeApiName(void);
 
 // IO 事件
 class aeFileEvent
@@ -102,6 +128,11 @@ public:
 private:
 };
 
+
+
 void aeMain(Server &server, aeEventLoop &aeLoop);
+
+
+
 
 #endif // REDIS_LEARN_AE
