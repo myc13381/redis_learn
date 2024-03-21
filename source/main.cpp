@@ -7,6 +7,8 @@
 #include "skiplist.h"
 #include "hyperLogLog.h"
 #include "server.h"
+#include "dict.h"
+#include "ae.h"
 
 #ifdef _WIN32
     #define STORE_FILE "../dumpfile"
@@ -94,10 +96,61 @@ void slaveTest()
 
 }
 
+void dictTest()
+{
+    auto show = [](HashNode *node)
+    {
+        if(node==nullptr) std::cout<<"nullptr\n";
+        else std::cout<<node->getKey()<<" "<<node->getValue()<<'\n';
+    };
+    // test hashtable
+    std::cout<<"===========Hashtable==============\n";
+    Hashtable t1;
+    HashNode *node = nullptr;
+    node = t1.find("hello");
+    show(node);
+    t1.insert("hello","myc");
+    node = t1.find("hello");
+    show(node);
+    t1.erase("hello");
+    t1.erase("hello");
+    t1.erase("hello");
+    t1.insert("world","zzzz");
+    t1.insert("world","hello");
+    show(t1.find("world"));
+
+    // test dict
+    std::cout<<"============Dict=================\n";
+    Dict dict;
+    dict.insert("hello","world");
+    show(dict.find("myc"));
+    show(dict.find("hello"));
+    show(dict.erase("hello"));
+    show(dict.erase("zyg"));
+    return;
+    
+}
+
+void serverTest()
+{
+    aeEventLoop loop;
+    Server server;
+    // 初始化epoll
+    aeApiCreate(loop);
+    // 初始化服务器
+    server.ServerInit();
+    //aeCreateFileEvent(server.config.master_socket_fd,loop,aeServerConnectToClient,AE_READABLE,nullptr);
+    aeApiAddEvent(loop, server.config.master_socket_fd, AE_READABLE); // 将服务器监听套接字加入epoll
+
+    aeMain(server,loop);
+
+    aeApiFree(loop);
+
+}
+
 int main()
 {
 
-    masterTest();
-
+    serverTest();
     return 0;
 }

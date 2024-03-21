@@ -82,6 +82,8 @@ enum ReplStatus {
 IO事件
 设计架构 server 不需要知道AE的存在
 
+关于 epoll_wait,如果客户端断开连接，epoll_wait 会不断唤醒客户端对应的套接字，直到对应套接字被关闭
+
 
 ## dict
 字典，内部采用两个哈希表，采用渐进式哈希进行重哈希操作

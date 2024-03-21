@@ -15,6 +15,8 @@
 #include <atomic>
 #include "skiplist.h"
 
+#define DEFAULT_SERVER_PORT 9000
+
 typedef SkipList<std::string,std::string> DB; // 数据库类型
 typedef Node<std::string,std::string> DBNode; // 数据库节点
 
@@ -227,7 +229,7 @@ void AOFRW(Server &server);
 
 
 
-// =======================主从复制相关====================================================================
+// =======================主从复制相关======================
 
 // 主从复制
 // 第一步配置数据，数据库启动后获得主/从 的IP，port

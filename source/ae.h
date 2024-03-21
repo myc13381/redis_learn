@@ -9,7 +9,6 @@
 #include <errno.h>
 #include "server.h"
 
-
 #define AE_NONE 0       /* No events registered. */
 #define AE_READABLE 1   /* Fire when descriptor is readable. */
 #define AE_WRITABLE 2   /* Fire when descriptor is writable. */
@@ -40,7 +39,7 @@ public:
 // 封装 epoll
 int aeApiCreate(aeEventLoop &eventloop);
 void aeApiFree(aeEventLoop &eventloop);
-int adApiAddEvent(aeEventLoop &eventloop, int fd, int mask);
+int aeApiAddEvent(aeEventLoop &eventloop, int fd, int mask);
 void aeApiDelEvent(aeEventLoop &eventloop, int fd, int delmask);
 int aeApiPoll(aeEventLoop &eventloop, int waitTime);
 std::string aeApiName(void);
@@ -50,8 +49,8 @@ class aeFileEvent
 {
 public:
     int mask; // 类型掩码 0 为缺省值，1 表示读事件， 2 表示写事件, 4 表示屏障事件
-    std::function<void(Server &, void *)> rfileProc;
-    std::function<void(Server &, void *)> wfileProc;
+    std::function<void(int, Server &, aeEventLoop &, void *)> rfileProc;
+    std::function<void(int, Server &, aeEventLoop &, void *)> wfileProc;
     void *clientData;  // 客户端发来的数据
     aeFileEvent() : mask(AE_NONE), clientData(nullptr) {}
 private:
@@ -123,16 +122,24 @@ public:
     }
 
     aeEventLoop& operator=(const aeEventLoop &el) = delete;
-
-    void initAeApiState();
 private:
 };
 
+// 添加 IO 事件
+void aeCreateFileEvent(int fd, aeEventLoop &eventloop, std::function<void(Server &server, aeEventLoop &eventloop, void*)> func, int mask, void *clientData);
 
-
+// 事件循环函数
 void aeMain(Server &server, aeEventLoop &aeLoop);
 
 
+// 服务器连接客户端
+void aeServerConnectToClient(Server &server, aeEventLoop &aeloop, void*);
+
+// 读取客户端的发送的数据并处理
+void readQueryFromClient(int fd, Server &server, aeEventLoop &aeLoop, void *clientData);
+
+// 关闭客户端
+void closeClient(int fd, Server &server, aeEventLoop &aeLoop);
 
 
 #endif // REDIS_LEARN_AE

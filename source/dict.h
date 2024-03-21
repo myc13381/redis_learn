@@ -51,9 +51,9 @@ public:
     // 哈希函数
     size_t hash(const std::string &key);
 
-    HashNode* find(const std::string &key);
-    void insert(std::string &key, std::string &value);
-    HashNode* erase(const std::string &key);
+    HashNode* find(const std::string key);
+    void insert(std::string key, std::string value);
+    HashNode* erase(const std::string key);
     void clear();
     bool empty() { return _nodeSize == 0; }
     // 不安全的扩/缩容 仅限于在 Dict 的 rehash 中进行调用，newSize 需要保证是2的N次方
@@ -82,9 +82,9 @@ public:
     Dict() : _rehashIdx(nops), _iterators(0) {}
     Dict(int baseNum);
     ~Dict() {}
-    HashNode* find(std::string &key);
-    void insert(std::string &key, std::string &value);
-    HashNode* erase(std::string &key);
+    HashNode* find(std::string key);
+    void insert(std::string key, std::string value);
+    HashNode* erase(std::string key);
     // 重哈希 n 个桶中的位置，rehash 完毕返回0，否则返回1
     int rehash(int n);
     // 在 ms 毫秒内持续 rehash, 单次 rehash 至少100个元素

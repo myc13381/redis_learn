@@ -40,7 +40,7 @@ size_t Hashtable::hash(const std::string &key)
 }
 
 // 查找，找不到返回nullptr，找到返回对应节点的指针
-HashNode* Hashtable::find(const std::string &key)
+HashNode* Hashtable::find(const std::string key)
 {
     size_t index = hash(key);
     HashNode *node = _buckets[index];
@@ -53,7 +53,7 @@ HashNode* Hashtable::find(const std::string &key)
     return node;
 }
 
-void Hashtable::insert(std::string &key, std::string &value)
+void Hashtable::insert(std::string key, std::string value)
 {
     
     HashNode *node = find(key);
@@ -63,7 +63,7 @@ void Hashtable::insert(std::string &key, std::string &value)
         node = new HashNode();
         node->setKey(key);
         node->setValue(value);
-        node->next() = _buckets[index]->next();
+        if(_buckets[index] != nullptr) node->next() = _buckets[index]->next();
         _buckets[index] = node;
         ++_nodeSize; // 增加一个节点的数量
     }
@@ -74,15 +74,15 @@ void Hashtable::insert(std::string &key, std::string &value)
 }
 
 // 删除元素 返回删除节点的指针，如果节点不存在，则返回nullptr，对应在堆区开辟的空间，需要程序员自己释放
-HashNode* Hashtable::erase(const std::string &key)
+HashNode* Hashtable::erase(const std::string key)
 {
     size_t index = hash(key);
     HashNode *node = _buckets[index], *prev = nullptr;
     while(node != nullptr)
     {
+        prev = node;
         if(node->getKey() == key)
             break;
-        prev = node;
         node = node->next();
     }
     if(node == nullptr) return nullptr;
@@ -131,7 +131,7 @@ Dict::Dict(int baseNum) : _rehashIdx(nops), _iterators(0)
     _hashtable[0] = Hashtable(baseNum);
 }
 
-HashNode* Dict::find(std::string &key)
+HashNode* Dict::find(std::string key)
 {
     HashNode *node = _hashtable[0].find(key);
     if(_rehashIdx == nops || node != nullptr)
@@ -146,7 +146,7 @@ HashNode* Dict::find(std::string &key)
 }
 
 
-void Dict::insert(std::string &key, std::string &value)
+void Dict::insert(std::string key, std::string value)
 {
     HashNode *node = nullptr;
     // 先在第一个表中寻找
@@ -157,18 +157,17 @@ void Dict::insert(std::string &key, std::string &value)
         if(node->getKey() == key) break;
         node = node->next();
     }
-    node = _hashtable[0].find(key);
     if(node != nullptr)
     { // 在第一个表中找到了
         node->setValue(value);
         return;
     }
-    if(_rehashIdx != nops)
+    if(_rehashIdx == nops)
     { // 没有 rehash，直接在第一个表插入
         node = new HashNode();
         node->setKey(key);
         node->setValue(value);
-        node->next() = _hashtable[0].getBucket()[index]->next();
+        if(_hashtable[0].getBucket()[index] != nullptr) node->next() = _hashtable[0].getBucket()[index]->next();
         _hashtable[0].getBucket()[index] = node;
         ++_hashtable[0].nodeSize();
         return;
@@ -190,22 +189,22 @@ void Dict::insert(std::string &key, std::string &value)
         node = new HashNode();
         node->setKey(key);
         node->setValue(value);
-        node->next() = _hashtable[1].getBucket()[index]->next();
+        if(_hashtable[1].getBucket()[index] != nullptr) node->next() = _hashtable[1].getBucket()[index]->next();
         _hashtable[1].getBucket()[index] = node;
         ++_hashtable[1].nodeSize();
     }
     return;
 }
 
-HashNode* Dict::erase(std::string &key)
+HashNode* Dict::erase(std::string key)
 {
     HashNode *node = nullptr, *prev = nullptr;
     size_t index = _hashtable[0].hash(key);
     prev = node = _hashtable[0].getBucket()[index];
     while(node != nullptr)
     {
-        if(node->getKey() == key) break;
         prev = node;
+        if(node->getKey() == key) break;
         node = node->next();
     }
     if(node != nullptr)

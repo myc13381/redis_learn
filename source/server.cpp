@@ -220,3 +220,34 @@ void serverCron(Server &server)
 
     ++server.cronloops;
 }
+
+
+void Server::ServerInit()
+{
+    // 设置端口号
+    this->config.master_port = DEFAULT_SERVER_PORT;
+    // Redis server 创建监听套接字
+    this->config.master_socket_fd = socket(PF_INET, SOCK_STREAM, 0);
+
+    sockaddr_in master_adr;
+    memset(&master_adr, 0, sizeof(master_adr));
+    master_adr.sin_family = AF_INET;
+    master_adr.sin_addr.s_addr = htonl(INADDR_ANY);
+    master_adr.sin_port = htons(config.master_port);
+
+    // 设置为socket为立即可用，便于调试
+    int optval = 1;
+    setsockopt(this->config.master_socket_fd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
+
+    // 套接字和IP，端口绑定
+    if(bind(this->config.master_socket_fd, reinterpret_cast<sockaddr *>(&master_adr), sizeof(master_adr))==-1)
+    {
+        errorHandling("bind error!");
+    }
+
+    // 监听
+    if(listen(this->config.master_socket_fd,1) == -1)
+    {
+        errorHandling("listen error!");
+    }  
+}

@@ -1,5 +1,6 @@
 #include "ae.h"
 
+// ====================================时间事件====================================
 // 添加时间事件
 void aeEventLoop::addTimeEventToLoop(std::function<void(Server &)> func, std::chrono::milliseconds ms)
 {
@@ -27,14 +28,85 @@ void aeMain(Server &server, aeEventLoop &aeLoop)
     while(!aeLoop.aeEventLoopStop)
     {
         // 处理时间事件
-        aeLoop.dealWithTimeEvents(server);
+        //aeLoop.dealWithTimeEvents(server);
 
         // 处理IO事件
-        // 待添加
+        size_t eventNum = aeApiPoll(aeLoop, -1);
+
+        for(size_t i=0;i<eventNum;++i)
+        {
+            int fd = aeLoop.fired[i].fd;
+            std::cout<<fd<<"\n";
+            if(fd == server.config.master_socket_fd)
+            {
+                // 连接客户端
+                aeServerConnectToClient(server,aeLoop,nullptr);
+            }
+            else readQueryFromClient(fd, server,aeLoop,nullptr);
+        }
     }
 }
 
-// 封装 epoll 
+// ==============================IO 事件处理===============================
+// 添加 IO 事件
+void aeCreateFileEvent(int fd, aeEventLoop &eventloop, std::function<void(int, Server &, aeEventLoop &, void*)> func, int mask, void *clientData)
+{
+    
+    if(aeApiAddEvent(eventloop, fd, mask) == -1)
+    {
+        errorHandling("aeApiAddEvent error!");
+    }
+    aeFileEvent &event = eventloop.events[fd]; // 添加事件
+    //event.mask |= mask;
+    event.mask = mask;
+    if(mask & AE_READABLE) event.rfileProc = func;
+    if(mask & AE_WRITABLE) event.wfileProc = func;
+    event.clientData = clientData;
+    if(fd > eventloop.maxfd) eventloop.maxfd = fd;
+}
+
+
+
+
+// 服务器连接客户端
+void aeServerConnectToClient(Server &server, aeEventLoop &aeloop, void*)
+{
+    int listenFd = server.config.master_socket_fd;
+    sockaddr_in client_addr;
+    socklen_t slave_addr_size = sizeof(client_addr);
+    int clientFd = accept(listenFd, reinterpret_cast<sockaddr *>(&client_addr), &slave_addr_size);
+    int optval = 1;
+    setsockopt(clientFd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
+    aeCreateFileEvent(clientFd, aeloop, readQueryFromClient, AE_WRITABLE, nullptr);
+}
+
+// 读取客户端的发送的数据并处理
+void readQueryFromClient(int fd, Server &server, aeEventLoop &aeLoop, void *clientData)
+{
+    char buff[11];
+    buff[11]=0;
+    int readlen = read(fd,buff,11);
+    if(readlen == 0) 
+    {
+        closeClient(fd, server, aeLoop);
+        return;
+    }
+    std::cout<<buff<<std::endl;
+}
+
+// 关闭客户端
+void closeClient(int fd, Server &server, aeEventLoop &aeLoop)
+{
+    close(fd); // 关闭客户端
+    aeApiDelEvent(aeLoop,fd,AE_WRITABLE);
+    aeLoop.events[fd].mask = AE_NONE;
+    if(aeLoop.events[fd].clientData != nullptr) delete aeLoop.events[fd].clientData;
+    aeLoop.events[fd].clientData = nullptr;
+    return;
+}
+
+
+// ==========================封装 epoll ==========================================
 // 初始化 eventloop 中的 apiData 成员变量
 int aeApiCreate(aeEventLoop &eventloop)
 {
@@ -42,14 +114,12 @@ int aeApiCreate(aeEventLoop &eventloop)
     eventloop.apiData.epfd = epoll_create(1024); // 1024 只是一个填充值
 
     // 在给定 fd 上启用FD_CLOEXEC以避免 fd 泄漏。
-    // .... 具体实现和 anet.c 有关
-
     return 0;
 }
 
 
 // 释放 epoll 有关资源
-inline void aeApiFree(aeEventLoop &eventloop)
+void aeApiFree(aeEventLoop &eventloop)
 {
     close(eventloop.apiData.epfd);
     delete [] eventloop.apiData.events;
@@ -57,11 +127,11 @@ inline void aeApiFree(aeEventLoop &eventloop)
 
 // 向 eventloop 中添加 IO事件 
 // 成功返回0，失败返回 -1
-int adApiAddEvent(aeEventLoop &eventloop, int fd, int mask)
+int aeApiAddEvent(aeEventLoop &eventloop, int fd, int mask)
 {
     epoll_event ee {0};
     // 如果这个事件还没有被触发过，则使用 EPOLL_CTL_ADD, 否则使用 EPOLL_CTL_MOD 进行修改
-    int op = eventloop.events[fd].mask = AE_NONE ? EPOLL_CTL_ADD : EPOLL_CTL_MOD; 
+    int op = eventloop.events[fd].mask == AE_NONE ? EPOLL_CTL_ADD : EPOLL_CTL_MOD; 
     ee.events = 0;
     mask |= eventloop.events[fd].mask; // 和以前的事件掩码合并
     // 根据 mask 的值判断这个事件的性质
