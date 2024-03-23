@@ -24,14 +24,17 @@ void aeEventLoop::dealWithTimeEvents(Server &server)
 
 void aeMain(Server &server, aeEventLoop &aeLoop)
 {
+    
     aeLoop.aeEventLoopStop = false;
-    while(!aeLoop.aeEventLoopStop)
+    while(!aeLoop.aeEventLoopStop && !server.serverStop)
     {
+        std::chrono::milliseconds startTime =  std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock().now().time_since_epoch());
         // 处理时间事件
-        //aeLoop.dealWithTimeEvents(server);
-
+        aeLoop.dealWithTimeEvents(server);
+        // 处理循环的时间事件
+        serverCron(server);
         // 处理IO事件
-        size_t eventNum = aeApiPoll(aeLoop, -1);
+        size_t eventNum = aeApiPoll(aeLoop, 1000);
 
         for(size_t i=0;i<eventNum;++i)
         {
@@ -44,6 +47,11 @@ void aeMain(Server &server, aeEventLoop &aeLoop)
             }
             else readQueryFromClient(fd, server,aeLoop,nullptr);
         }
+        std::chrono::milliseconds endTime =  std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock().now().time_since_epoch());
+        int circleTime = (endTime - startTime).count();
+        if(circleTime == 0) circleTime = 1000;
+        server.hz = 1000/circleTime > 0 ? 1000/circleTime : 1;
+        continue;
     }
 }
 
@@ -83,15 +91,38 @@ void aeServerConnectToClient(Server &server, aeEventLoop &aeloop, void*)
 // 读取客户端的发送的数据并处理
 void readQueryFromClient(int fd, Server &server, aeEventLoop &aeLoop, void *clientData)
 {
-    char buff[11];
-    buff[11]=0;
-    int readlen = read(fd,buff,11);
-    if(readlen == 0) 
+    constexpr size_t BUFFSIZE = 8192;
+    char buff[BUFFSIZE];
+    // 首先读取客户端发送数据的长度
+    size_t len = 0;
+    int readLen = 0;
+    while(readLen != sizeof(size_t))
     {
-        closeClient(fd, server, aeLoop);
-        return;
+        readLen += read(fd, static_cast<void*>(&len+readLen), sizeof(size_t));
+        if(readLen == 0) 
+        {   // 客户端断开连接
+            closeClient(fd, server, aeLoop);
+            return;
+        }
     }
+    // len中存储着接下来要发送的数据的长度
+    readLen = 0;
+    while(readLen != len)
+    {
+        readLen += read(fd, buff+readLen, len);
+    }
+    buff[len] = 0;
     std::cout<<buff<<std::endl;
+    Command cmd;
+    parseBinaryCmd(buff,cmd); // 解析cmd
+    showCommand(cmd);
+    // 执行命令并获取结果
+    std::string retMessage = execCommand(server,cmd); 
+    // 向客户端发送命令的执行情况
+    len = retMessage.length() + 1;
+    write(fd, static_cast<void*>(&len), sizeof(size_t));
+    write(fd, retMessage.c_str(), len);
+    return;
 }
 
 // 关闭客户端
@@ -102,6 +133,7 @@ void closeClient(int fd, Server &server, aeEventLoop &aeLoop)
     aeLoop.events[fd].mask = AE_NONE;
     if(aeLoop.events[fd].clientData != nullptr) delete aeLoop.events[fd].clientData;
     aeLoop.events[fd].clientData = nullptr;
+    std::cout<<"close client, fd =="<<fd<<std::endl;
     return;
 }
 

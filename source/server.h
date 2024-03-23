@@ -14,11 +14,12 @@
 #include <unistd.h>
 #include <atomic>
 #include "skiplist.h"
+#include "dict.h"
 
 #define DEFAULT_SERVER_PORT 9000
 
-typedef SkipList<std::string,std::string> DB; // 数据库类型
-typedef Node<std::string,std::string> DBNode; // 数据库节点
+typedef Dict DB; // 数据库类型
+typedef HashNode DBNode; // 数据库节点
 
 constexpr size_t REPL_BUFF_LEN = 128; // CmdBuff 缓存长度
 constexpr size_t REPL_COPY_BUFF = 1024;// 主从复制缓冲区长度，unit：byte
@@ -41,6 +42,8 @@ const std::string BASE_AOF_FILE_NAME = "base_aof.txt";
 const std::string INCR_AOF_FILE_NAME = "incr_aof.txt";
 const std::string TEMP_BASE_AOF_FILE_NAME = "temp_base_aof.txt";
 const std::string TEMP_INCR_AOF_FILE_NAME = "temp_incr_aof.txt";
+
+
 struct ReplConnectionPack
 {
     size_t offset; // 主机发送文件的字节数或者是从机接收的文件字节数
@@ -73,7 +76,8 @@ enum CMD_FLAG {
     CMD_GET,
     CMD_BGSAVE,
     CMD_SYNC,
-    CMD_AOF_REWRIIE
+    CMD_AOF_REWRIIE,
+    CMD_SHUTDOWN
 };
 
 // 命令结构体
@@ -150,12 +154,15 @@ public:
 
     // 时间循环事件的处理次数
     int cronloops;
+
+    // 停止服务器
+    bool serverStop;
 public:
     // 构造函数
-    Server():db(6),cmdbuff(REPL_BUFF_LEN),incrAofStream(),aof_buff(AOF_BUFF_LEN),hz(10),cronloops(0)
+    Server():db(6),cmdbuff(REPL_BUFF_LEN),incrAofStream(),aof_buff(AOF_BUFF_LEN),hz(10),cronloops(0),serverStop(false)
     {
         std::string fileName = "../"+INCR_AOF_FILE_NAME;
-        incrAofStream.open(fileName,std::ios::app);
+        incrAofStream.open(fileName,std::ios::trunc);
     }
     Server(const Server& db)
     {
@@ -164,13 +171,21 @@ public:
         this->cronloops = 0;
     }
 
+    ~Server()
+    {
+        closeServer();
+        this->incrAofStream.close();
+    }
     // 初始化数据库服务器
     void ServerInit();
+
+    // 服务器关闭释放资源
+    void closeServer();
 };
 
 
 // ====================执行相关命令================
-void execCommand(Server &server, Command &cmd);
+std::string execCommand(Server &server, Command &cmd);
 
 // 计算一个cmd转换为发送格式的长度
 inline size_t getLenOfCmd(Command &cmd)
@@ -180,6 +195,11 @@ inline size_t getLenOfCmd(Command &cmd)
     size_t totalLen = sizeof(CMD_FLAG) + sizeof(size_t) * 2 + keyLen + valueLen + 2;
     return totalLen;
 }
+
+size_t parseBinaryCmd(const char *buff, Command &cmd); // 解析一个cmd，并返回，假设一定能解析成功
+
+// 显示命令信息
+void showCommand(const Command &cmd);
 
 
 // ====================调试相关====================
@@ -268,7 +288,7 @@ void syncWithMaster(Server &db); // 和主机同步
 
 void recvFile(ServerConfig &config, std::string fileName); // 接收文件
 
-size_t parseBinaryCmd(const char *buff, Command &cmd); // 解析一个cmd，并返回，假设一定能解析成功
+
 
 
 

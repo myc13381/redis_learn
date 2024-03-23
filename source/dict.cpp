@@ -295,7 +295,7 @@ int Dict::rehash(int n)
 
 int Dict::rehashMilliseconds(int64_t ms)
 {
-    if(_rehashIdx == nops) return 0;
+    if(!isRehashing()) return 0;
     auto start = std::chrono::system_clock::now().time_since_epoch().count();
     int rehashes = 0;
     while(rehash(100))
@@ -328,6 +328,41 @@ void Dict::clear(std::function<void(void)> callback)
     }
 }
 
+// 获取node的下一个节点，重哈希情况下不允许调用
+HashNode* Dict::next(HashNode *node, size_t idx)
+{
+    return node->next();
+}
+
+// 返回第一个节点
+HashNode* Dict::first()
+{
+    HashNode *node = nullptr;
+    for(int i = 0;i<_hashtable[0].bucketSize();++i)
+    {
+        if(_hashtable[0].getBucket()[i] != nullptr)
+        {
+            node = _hashtable[0].getBucket()[i];
+            break;
+        }
+    }
+    return node;
+}
+// 返回尾部
+HashNode* Dict::end()
+{
+    return nullptr;
+}
+
+void Dict::dump_file(const std::string &fileName)
+{
+
+}
+void Dict::load_file(const std::string &fileName)
+{
+    
+}
+    
 
 
 

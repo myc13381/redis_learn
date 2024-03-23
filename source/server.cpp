@@ -89,33 +89,86 @@ void CmdBinaryBuff::writeCmdBack(Command &cmd)
     size+=totalLen;
 }
 
-void execCommand(Server &server, Command &cmd)
+// 解析一个cmd，并返回，假设一定能解析成功
+size_t parseBinaryCmd(const char *buff, Command &cmd)
+{
+    cmd.cmdFlag = *(CMD_FLAG *)buff;
+    size_t keyLen = *(size_t *)(buff + sizeof(CMD_FLAG));
+    cmd.key = buff + sizeof(CMD_FLAG) + sizeof(size_t);
+    size_t valueLen = *(size_t *)(buff + sizeof(CMD_FLAG) + sizeof(size_t) + keyLen);
+    cmd.value = buff + sizeof(CMD_FLAG) + 2 * sizeof(size_t) + keyLen;
+    return sizeof(CMD_FLAG) + 2 * sizeof(size_t) + keyLen + valueLen;
+}
+
+std::string execCommand(Server &server, Command &cmd)
+{
+    std::string ret;
+    switch (cmd.cmdFlag)
+    {
+        case CMD_SET :
+        {
+            server.db.insert(cmd.key, cmd.value);
+            server.cmdbuff.push_back(cmd);
+            // 处理AOF缓存
+            if(server.aof_buff.size() == server.aof_buff.capacity())
+            {
+                // 缓冲区已满，直接写入
+                writeInrcAofFile(server.aof_buff,server.incrAofStream);
+                server.aof_buff.clear();
+            }
+            server.aof_buff.push_back(cmd);
+            ret = "ok";
+            break;
+        }
+        case CMD_GET :
+        {
+            HashNode * node = server.db.find(cmd.key);
+            if(node != nullptr) ret = node->getValue();
+            else ret = "Not found!";
+            break;
+        }
+        case CMD_SHUTDOWN:
+        {
+            server.serverStop = true;
+            ret = "server is shutdown!";
+            break;
+        }
+        default:
+            std::cout<<"unknow cmd !\n";
+            ret = "unknow cmd !";
+        break;
+    }
+    return ret;
+}
+
+
+// 显示命令信息
+void showCommand(const Command &cmd)
 {
     switch (cmd.cmdFlag)
     {
         case CMD_SET :
-        server.db.insert_element(cmd.key,cmd.value);
-        server.cmdbuff.push_back(cmd);
-        // 处理AOF缓存
-        if(server.aof_buff.size() == server.aof_buff.capacity())
         {
-            // 缓冲区已满，直接写入
-            writeInrcAofFile(server.aof_buff,server.incrAofStream);
-            server.aof_buff.clear();
+           std::cout<<"CMD_SET"<<" ";
+            break;
         }
-        server.aof_buff.push_back(cmd);
-        break;
-
         case CMD_GET :
-        server.db.search_element(cmd.key);
-        break;
-
+        {
+            std::cout<<"CMD_GET"<<" ";
+            break;
+        }
+        case CMD_SHUTDOWN :
+        {
+            std::cout<<"CMD_SHUTDOWN"<<" ";
+            break;
+        }
         default:
-            std::cout<<"unknow cmd !\n";
+            std::cout<<"unknow cmd ! ";
         break;
     }
+    std::cout<<"key: "<<cmd.key<<", ";
+    std::cout<<"value: "<<cmd.value<<"\n";
 }
-
 
 void errorHandling(std::string message)
 {
@@ -142,30 +195,33 @@ void writeInrcAofFile(CmdBuff &aof_buff, std::ofstream &ofs)
     int n = aof_buff.size();
     for(int i=0;i<n;++i)
     {
-        ofs<<aof_buff.at(i).cmdFlag<<'\t';
-        ofs<<aof_buff.at(i).key<<'\t';
+        ofs<<aof_buff.at(i).cmdFlag<<' ';
+        ofs<<aof_buff.at(i).key<<' ';
         ofs<<aof_buff.at(i).value<<'\n';
     }
     aof_buff.clear();
 }
 
 // 重写 BASE_AOF 文件 重写到 targetFile 文件中，做法是遍历数据库，然后依次写入文件
+// 重写 AOF 文件和 rehash 不能同时发生 ，因此只需要遍历 Dict::_hashtable[0] 即可
 void reWriteBaseAofFile(Server server, std::string targetFile)
 {
+    // if(server.db.isRehashing()) return; // 正在重哈希，不允许AOF
     std::ofstream ofs;
     ofs.open(targetFile,std::ios::trunc);
     if(ofs.is_open())
     {
-        // for(int i=0;i<100;++i) ofs<<i<<' ';
-        // ofs<<'\n';
-
-        DBNode *node = const_cast<DBNode*>(server.db.getHeader())->forward[0];
-        while(node != nullptr)
+        for(size_t i=0;i<server.db.getTable()[0].bucketSize();++i)
         {
-            ofs<<CMD_SET<<'\t';
-            ofs<<node->get_key()<<'\t';
-            ofs<<node->get_value()<<'\n';
-            node = node->forward[0];
+            HashNode *node = server.db.getTable()[0].getBucket()[i];
+            if(node == nullptr) continue;
+            while(node != nullptr)
+            {
+                ofs<<CMD_SET<<" ";
+                ofs<<node->getKey()<<" ";
+                ofs<<node->getValue()<<" ";
+                node = node->next();
+            }
         }
         ofs.close();
     }
@@ -215,8 +271,8 @@ void serverCron(Server &server)
         writeInrcAofFile(server.aof_buff, server.incrAofStream);
         server.aof_buff.clear();
     }
-
-    // 每十秒发送一次 主从心跳包？
+    // 持续尝试rehash
+    server.db.rehashMilliseconds(100);
 
     ++server.cronloops;
 }
@@ -250,4 +306,11 @@ void Server::ServerInit()
     {
         errorHandling("listen error!");
     }  
+}
+
+void Server::closeServer()
+{
+    close(this->config.master_socket_fd);
+
+    // 释放客户端 fd 。。。
 }

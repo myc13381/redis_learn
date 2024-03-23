@@ -136,6 +136,9 @@ void aeMain(Server &server, aeEventLoop &aeLoop);
 void aeServerConnectToClient(Server &server, aeEventLoop &aeloop, void*);
 
 // 读取客户端的发送的数据并处理
+// 客户端和服务器的沟通方式
+// 双发在发送内容前首先发送一个size_t大小的数据包，表明接下来要发送的数据包的长度
+// 发送完长度之后才会正在发送数据包
 void readQueryFromClient(int fd, Server &server, aeEventLoop &aeLoop, void *clientData);
 
 // 关闭客户端

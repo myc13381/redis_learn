@@ -300,13 +300,3 @@ void recvFile(ServerConfig &config, std::string fileName)
     file.write(buff, fileLen);
 }
 
-// 解析一个cmd，并返回，假设一定能解析成功
-size_t parseBinaryCmd(const char *buff, Command &cmd)
-{
-    cmd.cmdFlag = *(CMD_FLAG *)buff;
-    size_t keyLen = *(size_t *)(buff + sizeof(CMD_FLAG));
-    cmd.key = buff + sizeof(CMD_FLAG) + sizeof(size_t);
-    size_t valueLen = *(size_t *)(buff + sizeof(CMD_FLAG) + sizeof(size_t) + keyLen);
-    cmd.value = buff + sizeof(CMD_FLAG) + 2 * sizeof(size_t) + keyLen;
-    return sizeof(CMD_FLAG) + 2 * sizeof(size_t) + keyLen + valueLen;
-}

@@ -144,8 +144,6 @@ void serverTest()
 
     aeMain(server,loop);
 
-    aeApiFree(loop);
-
 }
 
 int main()

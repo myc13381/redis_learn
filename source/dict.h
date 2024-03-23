@@ -89,14 +89,22 @@ public:
     int rehash(int n);
     // 在 ms 毫秒内持续 rehash, 单次 rehash 至少100个元素
     int rehashMilliseconds(int64_t ms);
+    void startRehash() {rehash(0);} // 尝试 rehash, rehash 函数内部会判断是不是需要rehash
+
     // clear 必须一次执行完毕
     // callback 用于在可能出现的长时间阻塞情况下进行一些必要操作，例如集群中发送定时消息
-    void clear(std::function<void(void)> callback);
-
+    void clear(std::function<void(void)> callback = [](){});
+    bool isRehashing() {return _rehashIdx != nops;}
     size_t& rehashIdx() { return _rehashIdx; }
     size_t& iterators() { return _iterators; }
     Hashtable* getTable() { return _hashtable;}
     bool empty() { return (_hashtable[0].empty() && _hashtable[1].empty()); }
+    HashNode* next(HashNode *node, size_t idx); // 获取node的下一个节点
+    HashNode* first(); // 返回第一个节点
+    HashNode* end(); // 返回尾部
+
+    void dump_file(const std::string &fileName);
+    void load_file(const std::string &fileName);
 
 private:
     size_t _rehashIdx; // 重哈希的索引，每次重哈希的单位是桶的一个元素，如果 rehashIdx == nops ,代表没有在rehash
