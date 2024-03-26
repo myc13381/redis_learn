@@ -8,6 +8,7 @@
 #include <sys/epoll.h>
 #include <errno.h>
 #include "server.h"
+#include "threadsafe_structures.h"
 
 #define AE_NONE 0       /* No events registered. */
 #define AE_READABLE 1   /* Fire when descriptor is readable. */
@@ -125,11 +126,29 @@ public:
 private:
 };
 
+// IO 线程处理的信息
+class IOThreadNews
+{
+public:
+    int fd;
+    bool isRead;
+    std::string str;
+    IOThreadNews() = default;
+    IOThreadNews(int fd, bool isRead, std::string str) : fd(fd), isRead(isRead), str(str) {}
+    IOThreadNews& operator=(const IOThreadNews &news)
+    {
+        this->fd = news.fd;
+        this->isRead = news.isRead;
+        this->str = news.str;
+        return *this;
+    }
+};
+
 // 添加 IO 事件
-void aeCreateFileEvent(int fd, aeEventLoop &eventloop, std::function<void(Server &server, aeEventLoop &eventloop, void*)> func, int mask, void *clientData);
+void aeCreateFileEvent(int fd, aeEventLoop &eventloop, std::function<void(Server &, aeEventLoop &, void*)> func, int mask, void *clientData);
 
 // 事件循环函数
-void aeMain(Server &server, aeEventLoop &aeLoop);
+void aeMain(Server &server, aeEventLoop &aeLoop, std::vector<threadsafe_queue<IOThreadNews>> &io_q, threadsafe_queue<std::pair<int, Command>> &exe_q);
 
 
 // 服务器连接客户端
@@ -143,6 +162,11 @@ void readQueryFromClient(int fd, Server &server, aeEventLoop &aeLoop, void *clie
 
 // 关闭客户端
 void closeClient(int fd, Server &server, aeEventLoop &aeLoop);
+
+
+
+// IO 线程运行函数
+void IOThreadMain(Server &server, aeEventLoop &aeloop, threadsafe_queue<IOThreadNews> &io_q, threadsafe_queue<std::pair<int, Command>> &exe_q);
 
 
 #endif // REDIS_LEARN_AE

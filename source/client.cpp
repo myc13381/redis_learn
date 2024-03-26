@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <fstream>
+#include <chrono>
 using namespace std;
 
 
@@ -95,6 +96,7 @@ std::string sendCmd(int sock, CMD_FLAG flag, std::string key = std::string(), st
     char buff[1024];
     size_t len = getBinaryCmd(buff, flag, key, value);
     write(sock,&len, sizeof(size_t));
+    //std::this_thread::sleep_for(std::chrono::milliseconds(500));
     write(sock, buff, len);
     //for(;;);
     read(sock,&len, sizeof(size_t));
@@ -102,6 +104,7 @@ std::string sendCmd(int sock, CMD_FLAG flag, std::string key = std::string(), st
     buff[len]='\0';
     cout<<buff<<endl;
     return string(buff);
+    //this_thread::sleep_for(chrono::milliseconds(1000));
 }
 
 void connectToMaster()
@@ -122,10 +125,10 @@ void connectToMaster()
     {
         errorHandling("connect error!");
     }
-    std::cout<<"connect success!"<<endl;
+    //std::cout<<"connect success!"<<endl;
 
     sendCmd(sock, CMD_SET, "hello","world");
-    sendCmd(sock, CMD_SET, "myc","world");
+    sendCmd(sock, CMD_SET, "myc","66666");
     sendCmd(sock, CMD_SET, "zsx","world");
     sendCmd(sock, CMD_SET, "mkx","world");
     sendCmd(sock, CMD_SET, "whb","world");
@@ -133,17 +136,23 @@ void connectToMaster()
     sendCmd(sock, CMD_SET, "ddd","aaa");
     sendCmd(sock,CMD_GET, "ddd");
     sendCmd(sock,CMD_GET, "myc");
-    sendCmd(sock,CMD_SHUTDOWN);
+    // sendCmd(sock,CMD_SHUTDOWN);
 
     return;
 }
 
 int main()
 {
-    connectToMaster();
-
-    ofstream ofs("../a.txt",std::ios::trunc);
-    ofs<<CMD_SET<<" "<<CMD_SHUTDOWN<<" ";
-    ofs.close();
+    std::chrono::milliseconds start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
+    int n = 30;
+    vector<thread> tv(0);
+    for(int i=0;i<n;++i)
+    {
+        tv.emplace_back(thread(connectToMaster));
+    }
+    for(int i=0;i<n;++i) tv[i].join();
+    std::chrono::milliseconds end = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch());
+    //std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    cout<<(end-start).count()<<endl;
     return 0;
 }

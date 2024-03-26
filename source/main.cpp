@@ -135,6 +135,19 @@ void serverTest()
 {
     aeEventLoop loop;
     Server server;
+    server.setIOThreadNum(10);
+    // IO 队列
+    size_t IOthreadNum = server.IOThreadNum;
+    // IO 线程的工作队列
+    std::vector<threadsafe_queue<IOThreadNews>> io_queue(IOthreadNum);
+    threadsafe_queue<std::pair<int, Command>> exec_queue;
+    std::vector<std::thread> tv(0);
+    // 创建IO线程
+    for(int i=0;i<IOthreadNum;++i)
+    {
+        tv.emplace_back(std::thread(IOThreadMain, std::ref(server), std::ref(loop), std::ref(io_queue[i]), std::ref(exec_queue)));
+        tv[i].detach();
+    }
     // 初始化epoll
     aeApiCreate(loop);
     // 初始化服务器
@@ -142,7 +155,28 @@ void serverTest()
     //aeCreateFileEvent(server.config.master_socket_fd,loop,aeServerConnectToClient,AE_READABLE,nullptr);
     aeApiAddEvent(loop, server.config.master_socket_fd, AE_READABLE); // 将服务器监听套接字加入epoll
 
-    aeMain(server,loop);
+    aeMain(server,loop, io_queue, exec_queue);
+
+}
+
+threadsafe_queue<int> q;
+
+void foo()
+{
+    while(1)
+    {
+        q.push(1);
+        std::cout<<"push\n";
+    }
+}
+void func()
+{
+    int val;
+    while(1)
+    {
+        q.wait_and_pop(val);
+        std::cout<<"pop\n";
+    }
 
 }
 
@@ -150,5 +184,10 @@ int main()
 {
 
     serverTest();
+    // std::thread t1(foo);
+    // std::thread t2(func);
+    // t1.join();
+    // t2.join();
+
     return 0;
 }

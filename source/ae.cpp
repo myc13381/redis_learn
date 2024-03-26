@@ -22,7 +22,7 @@ void aeEventLoop::dealWithTimeEvents(Server &server)
     }
 }
 
-void aeMain(Server &server, aeEventLoop &aeLoop)
+void aeMain(Server &server, aeEventLoop &aeLoop, std::vector<threadsafe_queue<IOThreadNews>> &io_q, threadsafe_queue<std::pair<int, Command>> &exe_q)
 {
     
     aeLoop.aeEventLoopStop = false;
@@ -33,20 +33,65 @@ void aeMain(Server &server, aeEventLoop &aeLoop)
         aeLoop.dealWithTimeEvents(server);
         // 处理循环的时间事件
         serverCron(server);
+        
         // 处理IO事件
-        size_t eventNum = aeApiPoll(aeLoop, 1000);
-
-        for(size_t i=0;i<eventNum;++i)
+        size_t eventNum = 0;
+        // if(server.fdSet.size() < 20) 
+        eventNum = aeApiPoll(aeLoop, 500);
+        if(eventNum == -1) eventNum = 0;
+        
+        // 不开启 IO 多线程
+        if(server.IOThreadNum == 0)
         {
-            int fd = aeLoop.fired[i].fd;
-            std::cout<<fd<<"\n";
-            if(fd == server.config.master_socket_fd)
+            for(size_t i=0;i<eventNum;++i)
             {
-                // 连接客户端
-                aeServerConnectToClient(server,aeLoop,nullptr);
+                int fd = aeLoop.fired[i].fd;
+                std::cout<<fd<<"\n";
+                if(fd == server.config.master_socket_fd)
+                {
+                    // 连接客户端
+                    aeServerConnectToClient(server,aeLoop,nullptr);
+                }
+                else readQueryFromClient(fd, server,aeLoop,nullptr);
             }
-            else readQueryFromClient(fd, server,aeLoop,nullptr);
         }
+        else // 开启 IO 多线程
+        {
+            for(size_t i=0;i<eventNum;++i)
+            {
+                int fd = aeLoop.fired[i].fd;
+                int mask = aeLoop.fired[i].mask;
+                std::cout<<fd<<"\n";
+                if(fd == server.config.master_socket_fd && (mask & EPOLLIN))
+                {
+                    // 连接客户端
+                    aeServerConnectToClient(server,aeLoop,nullptr);
+                }
+                else
+                { // 读取客户端发来的信息
+                    if(server.fdSet.count(fd)==0)
+                    {
+                        io_q[fd%server.IOThreadNum].push(IOThreadNews(fd, true, std::string()));
+                        std::cout<<"get message from client\n";
+                        server.fdSet.insert(fd);
+                    }
+                }
+            }
+
+            // 执行数据库修改操作
+            std::pair<int, Command> p;
+            std::string retMessage;
+            while(!exe_q.empty())
+            {
+                if(exe_q.try_pop(p))
+                {
+                    retMessage = execCommand(server, p.second);
+                }
+                io_q[p.first%server.IOThreadNum].push(IOThreadNews(p.first, false, retMessage)); // 将执行的结过发送给客户端
+            }
+        }
+
+
         std::chrono::milliseconds endTime =  std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock().now().time_since_epoch());
         int circleTime = (endTime - startTime).count();
         if(circleTime == 0) circleTime = 1000;
@@ -65,8 +110,7 @@ void aeCreateFileEvent(int fd, aeEventLoop &eventloop, std::function<void(int, S
         errorHandling("aeApiAddEvent error!");
     }
     aeFileEvent &event = eventloop.events[fd]; // 添加事件
-    //event.mask |= mask;
-    event.mask = mask;
+    event.mask |= mask;
     if(mask & AE_READABLE) event.rfileProc = func;
     if(mask & AE_WRITABLE) event.wfileProc = func;
     event.clientData = clientData;
@@ -85,7 +129,7 @@ void aeServerConnectToClient(Server &server, aeEventLoop &aeloop, void*)
     int clientFd = accept(listenFd, reinterpret_cast<sockaddr *>(&client_addr), &slave_addr_size);
     int optval = 1;
     setsockopt(clientFd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
-    aeCreateFileEvent(clientFd, aeloop, readQueryFromClient, AE_WRITABLE, nullptr);
+    aeCreateFileEvent(clientFd, aeloop, readQueryFromClient, AE_READABLE, nullptr);
 }
 
 // 读取客户端的发送的数据并处理
@@ -112,12 +156,13 @@ void readQueryFromClient(int fd, Server &server, aeEventLoop &aeLoop, void *clie
         readLen += read(fd, buff+readLen, len);
     }
     buff[len] = 0;
-    std::cout<<buff<<std::endl;
+    // std::cout<<buff<<std::endl;
     Command cmd;
     parseBinaryCmd(buff,cmd); // 解析cmd
     showCommand(cmd);
     // 执行命令并获取结果
-    std::string retMessage = execCommand(server,cmd); 
+    std::string retMessage = execCommand(server,cmd);
+
     // 向客户端发送命令的执行情况
     len = retMessage.length() + 1;
     write(fd, static_cast<void*>(&len), sizeof(size_t));
@@ -169,6 +214,7 @@ int aeApiAddEvent(aeEventLoop &eventloop, int fd, int mask)
     // 根据 mask 的值判断这个事件的性质
     if(mask & AE_READABLE) ee.events |= EPOLLIN;
     if(mask & AE_WRITABLE) ee.events |= EPOLLOUT;
+    ee.events |= EPOLLET; // 采用边缘触发？
     ee.data.fd = fd;
     // 使用 epoll_ctl 添加需要监听的事件
     if(epoll_ctl(eventloop.apiData.epfd, op, fd, &ee)) return -1;
@@ -220,15 +266,70 @@ int aeApiPoll(aeEventLoop &eventloop, int waitTime)
             eventloop.fired[i].mask = mask;
         }
     }
-    else if(retval == -1 && errno == EINTR)
-    {
-        // 出现异常
-        std::cerr<<"aeApiPoll: epoll_wait"<<strerror(errno)<<std::endl;
-        abort();
-    }
+    // else if(retval == -1 && errno == EINTR)
+    // {
+    //     // 出现异常
+    //     std::cerr<<"aeApiPoll: epoll_wait"<<strerror(errno)<<std::endl;
+    //     abort();
+    // }
     return numevent; // 返回事件的数量
 }
 
 std::string aeApiName(void) {
     return "epoll";
+}
+
+// IO 线程运行函数
+void IOThreadMain(Server &server, aeEventLoop &aeloop, threadsafe_queue<IOThreadNews> &io_q, threadsafe_queue<std::pair<int, Command>> &exe_q)
+{
+    // 从 任务队列中取出任务
+    IOThreadNews news;
+    constexpr size_t BUFFSIZE = 8192;
+    char buff[BUFFSIZE];
+    while(true)
+    {
+        io_q.wait_and_pop(news);
+        if(news.isRead)
+        { // 读任务
+            // 首先读取客户端发送数据的长度
+            size_t len = 0;
+            int readLen = 0;
+            bool exit = false;
+            while(!exit && readLen != sizeof(size_t))
+            {
+                readLen += read(news.fd, static_cast<void*>(&len+readLen), sizeof(size_t));
+                if(readLen == 0) 
+                {   // 客户端断开连接
+                    closeClient(news.fd, server, aeloop);
+                    exit = true;
+                    server.fdSet.erase(news.fd);
+                }
+            }
+            if(exit) continue; // 客户端终止连接
+            // len中存储着接下来要发送的数据的长度
+            readLen = 0;
+            while(readLen != len)
+            {
+                readLen += read(news.fd, buff+readLen, len);
+            }
+            buff[len] = 0;
+            // std::cout<<buff<<std::endl;
+            Command cmd;
+            parseBinaryCmd(buff,cmd); // 解析cmd
+            showCommand(cmd);
+            // 将解析的命令放入到执行队列中
+            exe_q.push(std::make_pair(news.fd, cmd));
+        }
+        else
+        { // 写任务
+            // 向客户端发送命令的执行情况
+            size_t len = news.str.length() + 1;
+            write(news.fd, static_cast<void*>(&len), sizeof(size_t));
+            //std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            write(news.fd, news.str.c_str(), len);
+            //std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            server.fdSet.erase(news.fd);
+            
+        }
+    }
 }

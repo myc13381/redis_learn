@@ -13,8 +13,10 @@
 #include <string.h>
 #include <unistd.h>
 #include <atomic>
+#include <unordered_set>
 #include "skiplist.h"
 #include "dict.h"
+#include "threadsafe_structures.h"
 
 #define DEFAULT_SERVER_PORT 9000
 
@@ -157,9 +159,15 @@ public:
 
     // 停止服务器
     bool serverStop;
+
+    // IO线程的数量
+    size_t IOThreadNum;
+
+    // 正在处理的 IO fd
+    threadsafe_unordered_set<int> fdSet;
 public:
     // 构造函数
-    Server():db(6),cmdbuff(REPL_BUFF_LEN),incrAofStream(),aof_buff(AOF_BUFF_LEN),hz(10),cronloops(0),serverStop(false)
+    Server():db(6),cmdbuff(REPL_BUFF_LEN),incrAofStream(),aof_buff(AOF_BUFF_LEN),hz(10),cronloops(0),serverStop(false),IOThreadNum(1)
     {
         std::string fileName = "../"+INCR_AOF_FILE_NAME;
         incrAofStream.open(fileName,std::ios::trunc);
@@ -168,6 +176,8 @@ public:
     {
         this->db = db.db;
         this->hz = db.hz;
+        this->IOThreadNum = db.IOThreadNum;
+        this->serverStop = false;
         this->cronloops = 0;
     }
 
@@ -181,6 +191,11 @@ public:
 
     // 服务器关闭释放资源
     void closeServer();
+
+    void setIOThreadNum(size_t num)
+    {
+        this->IOThreadNum = num;
+    }
 };
 
 
