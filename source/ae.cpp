@@ -129,6 +129,11 @@ void aeServerConnectToClient(Server &server, aeEventLoop &aeloop, void*)
     int clientFd = accept(listenFd, reinterpret_cast<sockaddr *>(&client_addr), &slave_addr_size);
     int optval = 1;
     setsockopt(clientFd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
+
+    // 设置为非阻塞
+    int flag = fcntl(clientFd, F_GETFL, 0);
+    fcntl(clientFd, F_SETFL, flag|O_NONBLOCK);
+
     aeCreateFileEvent(clientFd, aeloop, readQueryFromClient, AE_READABLE, nullptr);
 }
 
@@ -288,37 +293,70 @@ void IOThreadMain(Server &server, aeEventLoop &aeloop, threadsafe_queue<IOThread
     char buff[BUFFSIZE];
     while(true)
     {
-        io_q.wait_and_pop(news);
+        if(!io_q.try_pop(news))
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            continue;
+        }
         if(news.isRead)
-        { // 读任务
-            // 首先读取客户端发送数据的长度
-            size_t len = 0;
-            int readLen = 0;
-            bool exit = false;
-            while(!exit && readLen != sizeof(size_t))
+        { // 读任务 根据 readLen的值判断现在读哪个部分
+            // 不断尝试读取指令，直到读完
+            while(true)
             {
-                readLen += read(news.fd, static_cast<void*>(&len+readLen), sizeof(size_t));
-                if(readLen == 0) 
-                {   // 客户端断开连接
+                // 首先读取客户端发送数据的长度
+                size_t len = 0;
+                int readLen = 0;
+                bool exit = false;
+                readLen = read(news.fd, static_cast<void*>(&len), sizeof(size_t));
+                if(readLen < 0 && errno == EAGAIN) 
+                    break; // 非阻塞IO，没有数据可读
+                if(readLen == 0)
+                { // 客户端关闭
                     closeClient(news.fd, server, aeloop);
-                    exit = true;
                     server.fdSet.erase(news.fd);
+                    break;
                 }
+                // len中存储着接下来要发送的数据的长度
+                readLen = read(news.fd, buff, len);
+                buff[len] = 0;
+                // std::cout<<buff<<std::endl;
+                Command cmd;
+                parseBinaryCmd(buff,cmd); // 解析cmd
+                showCommand(cmd);
+                std::cout<<news.fd<<"\n";
+                // 将解析的命令放入到执行队列中
+                exe_q.push(std::make_pair(news.fd, cmd));
             }
-            if(exit) continue; // 客户端终止连接
-            // len中存储着接下来要发送的数据的长度
-            readLen = 0;
-            while(readLen != len)
-            {
-                readLen += read(news.fd, buff+readLen, len);
-            }
-            buff[len] = 0;
-            // std::cout<<buff<<std::endl;
-            Command cmd;
-            parseBinaryCmd(buff,cmd); // 解析cmd
-            showCommand(cmd);
-            // 将解析的命令放入到执行队列中
-            exe_q.push(std::make_pair(news.fd, cmd));
+
+            // 下面是之前的代码，使用的是epoll ET，但是阻塞IO :)
+            // // 首先读取客户端发送数据的长度
+            // size_t len = 0;
+            // int readLen = 0;
+            // bool exit = false;
+            // while(!exit && readLen != sizeof(size_t))
+            // {
+            //     readLen += read(news.fd, static_cast<void*>(&len+readLen), sizeof(size_t));
+            //     if(readLen == 0) 
+            //     {   // 客户端断开连接
+            //         closeClient(news.fd, server, aeloop);
+            //         exit = true;
+            //         server.fdSet.erase(news.fd);
+            //     }
+            // }
+            // if(exit) continue; // 客户端终止连接
+            // // len中存储着接下来要发送的数据的长度
+            // readLen = 0;
+            // while(readLen != len)
+            // {
+            //     readLen += read(news.fd, buff+readLen, len);
+            // }
+            // buff[len] = 0;
+            // // std::cout<<buff<<std::endl;
+            // Command cmd;
+            // parseBinaryCmd(buff,cmd); // 解析cmd
+            // showCommand(cmd);
+            // // 将解析的命令放入到执行队列中
+            // exe_q.push(std::make_pair(news.fd, cmd));
         }
         else
         { // 写任务

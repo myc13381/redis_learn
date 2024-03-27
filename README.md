@@ -91,4 +91,26 @@ IO事件
 
 
 ## IO 多线程
+主线程负责进行数据库本身的读写的操作，而服务器与客户端之间的IO操作可以使用多线程并发执行
 
+使用 epoll 边缘触发 ET，因为多线程IO的话是异步IO，主线程会持续调用epoll_wait返回没有读完的文件描述符，因此会浪费资源，所以使用边缘触发。边缘触发需要配合非阻塞IO使用，通过返回值以及erron来判断读取是否完毕
+```cpp
+// 设置非阻塞IO
+int flag = fcntl(clientFd, F_GETFL, 0);
+    fcntl(clientFd, F_SETFL, flag|O_NONBLOCK);
+
+// 没有数据读取的判断
+if(readLen < 0 && errno == EAGAIN) 
+                    break; // 非阻塞IO，没有数据可读
+```
+
+使用自己封装的线程安全的队列来实现多线程之间数据的同步互斥访问
+
+```cpp
+template <typename T>
+class threadsafe_queue<T>;
+
+std::vector<threadsafe_queue<T>> io_q; // 每个线程有字节的io队列，里面包含了读操作和写操作
+threadsafe_queue<T> exe_q; // 主线程执行队列，里面包含了对数据库的执行命令
+```
+问题：如何检测程序中的死锁，怎么消除死锁的影响？

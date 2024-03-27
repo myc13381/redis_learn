@@ -7,6 +7,7 @@
 #include <functional>
 #include <sys/epoll.h>
 #include <errno.h>
+#include <fcntl.h> // 设置非阻塞 IO
 #include "server.h"
 #include "threadsafe_structures.h"
 

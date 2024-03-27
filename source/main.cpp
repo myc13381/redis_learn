@@ -135,7 +135,7 @@ void serverTest()
 {
     aeEventLoop loop;
     Server server;
-    server.setIOThreadNum(10);
+    server.setIOThreadNum(6);
     // IO 队列
     size_t IOthreadNum = server.IOThreadNum;
     // IO 线程的工作队列
